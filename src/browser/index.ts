@@ -1,7 +1,10 @@
 export { createConverter } from './converter';
 export {
+  convertCadBufferToGlbWithMetadata,
   convertDocumentToGlbWithRetries,
   type ConversionWarning,
+  type ConvertCadBufferOptions,
+  type ConvertCadBufferResult,
   type GlbConversionOptions,
   type GlbConversionResult,
 } from './conversion';

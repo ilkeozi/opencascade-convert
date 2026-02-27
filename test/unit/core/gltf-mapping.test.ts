@@ -40,6 +40,7 @@ describe('gltf-mapping', () => {
     expect(cleanGltfNodeName('   ')).toBe('');
     expect(cleanGltfNodeName('SimpleName')).toBe('SimpleName');
     expect(cleanGltfNodeName('Broken [0:1:2')).toBe('Broken');
+    expect(cleanGltfNodeName('[0:1]')).toBe('[0:1]');
   });
 
   it('builds pretty name overrides and node index map', () => {
@@ -85,5 +86,15 @@ describe('gltf-mapping', () => {
 
     const index = buildGltfNodeIndexByOcafEntry(glb);
     expect(index.get('0:1:2')).toEqual({ gltfNodeIndex: 0, gltfMeshIndex: undefined });
+  });
+
+  it('returns empty maps when nodes are not arrays', () => {
+    const glb = buildGlbFromJson({
+      asset: { version: '2.0' },
+      nodes: null,
+    });
+
+    expect(Array.from(buildPrettyNameOverridesFromGlb(glb).entries())).toEqual([]);
+    expect(Array.from(buildGltfNodeIndexByOcafEntry(glb).entries())).toEqual([]);
   });
 });

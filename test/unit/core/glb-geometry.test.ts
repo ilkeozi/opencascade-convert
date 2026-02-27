@@ -164,6 +164,74 @@ describe('glb-geometry', () => {
     expect(summary.primitiveCount).toBe(1);
   });
 
+  it('summarizes geometry when meshes/nodes are not arrays', () => {
+    const glb = buildGlbFromJson({
+      asset: { version: '2.0' },
+      accessors: [],
+      meshes: null,
+      nodes: null,
+    });
+
+    const summary = summarizeGlbGeometry(glb);
+    expect(summary.meshCount).toBe(0);
+    expect(summary.nodeCount).toBe(0);
+  });
+
+  it('throws when meshes/accessors are missing', () => {
+    const glb = buildGlbFromJson({
+      asset: { version: '2.0' },
+      meshes: [],
+      nodes: [],
+    });
+
+    expect(() => computeBoundsMeters(glb)).toThrow(
+      'Invalid GLB: missing meshes/accessors'
+    );
+  });
+
+  it('throws when BIN data is missing for bounds fallback', () => {
+    const glb = buildGlbFromJson({
+      asset: { version: '2.0' },
+      accessors: [{ min: [0, 0, 0], max: [1, 1, 1], count: 3 }],
+      meshes: [{}],
+      nodes: [],
+    });
+
+    expect(() => computeBoundsMeters(glb)).toThrow(
+      'Invalid GLB: missing BIN/bufferViews for bounds'
+    );
+  });
+
+  it('throws when BIN accessors lack counts', () => {
+    const bin = new Uint8Array(12);
+    const glb = buildGlbFromJson({
+      asset: { version: '2.0' },
+      buffers: [{ byteLength: bin.byteLength }],
+      bufferViews: [{ buffer: 0 }],
+      accessors: [
+        {
+          bufferView: 0,
+          componentType: 5126,
+          type: 'VEC3',
+        },
+      ],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      nodes: [],
+    });
+
+    // Append BIN chunk.
+    const totalLength = glb.byteLength + 8 + bin.byteLength;
+    const out = new Uint8Array(totalLength);
+    out.set(glb, 0);
+    const view = new DataView(out.buffer);
+    view.setUint32(8, totalLength, true);
+    view.setUint32(glb.byteLength, bin.byteLength, true);
+    view.setUint32(glb.byteLength + 4, 0x004e4942, true); // 'BIN'
+    out.set(bin, glb.byteLength + 8);
+
+    expect(() => computeBoundsMeters(out)).toThrow('Failed to compute bounds');
+  });
+
   it('throws on missing meshes/accessors', () => {
     const glb = buildGlbFromJson({ asset: { version: '2.0' } });
     expect(() => computeBoundsMeters(glb)).toThrow(

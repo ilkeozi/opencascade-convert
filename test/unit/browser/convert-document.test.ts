@@ -98,4 +98,56 @@ describe('convertDocumentToGlbWithRetries', () => {
       expect.objectContaining({ unitScaleToMeters: 0.001 })
     );
   });
+
+  it('throws when writeBuffer does not return GLB output', () => {
+    const converter = {
+      triangulate: vi.fn(),
+      writeBuffer: vi.fn().mockReturnValue({ outputFormat: 'obj', obj: new Uint8Array([1]) }),
+    };
+    const docHandle = { get: () => ({}) };
+
+    expect(() =>
+      convertDocumentToGlbWithRetries(converter as any, docHandle as any)
+    ).toThrow('Failed to generate GLB output.');
+  });
+
+  it('warns when triangle explosion persists on final attempt', () => {
+    const glb = buildGlbWithTriangleCount(10);
+    const converter = {
+      triangulate: vi.fn(),
+      writeBuffer: vi.fn().mockReturnValue({ outputFormat: 'glb', glb }),
+    };
+    const docHandle = { get: () => ({}) };
+
+    const result = convertDocumentToGlbWithRetries(
+      converter as any,
+      docHandle as any,
+      {
+        attempts: 1,
+        triangleExplosionThresholds: { MAX_TRIANGLES: 1, MAX_PRIMITIVES: 1 },
+      }
+    ) as GlbConversionResult;
+
+    expect(
+      result.conversionWarnings.some(
+        (warning) => warning.code === 'mesh/triangle-explosion-unresolved'
+      )
+    ).toBe(true);
+  });
+
+  it('emits no warnings when mesh is within thresholds', () => {
+    const glb = buildGlbWithTriangleCount(1);
+    const converter = {
+      triangulate: vi.fn(),
+      writeBuffer: vi.fn().mockReturnValue({ outputFormat: 'glb', glb }),
+    };
+    const docHandle = { get: () => ({}) };
+
+    const result = convertDocumentToGlbWithRetries(
+      converter as any,
+      docHandle as any
+    ) as GlbConversionResult;
+
+    expect(result.conversionWarnings).toHaveLength(0);
+  });
 });

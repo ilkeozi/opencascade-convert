@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../../src/core/unit-scale', () => ({
+  applyLengthUnitConversionToWriter: vi.fn(),
+}));
+
+import { applyLengthUnitConversionToWriter } from '../../../src/core/unit-scale';
 import {
   applyGltfNameFormat,
   createMetadataMap,
@@ -110,6 +115,19 @@ describe('writer-core', () => {
     expect(data).toEqual(new Uint8Array([1, 2, 3]));
     expect(RWGltf_CafWriter.last?.Perform_2).toHaveBeenCalled();
     expect(oc.FS.unlink).toHaveBeenCalledWith(path);
+  });
+
+  it('applies unit scale when provided', () => {
+    const { oc, fsStore } = createOcStub();
+    const path = './output.glb';
+    fsStore.set(path, new Uint8Array([1]));
+
+    writeGlbInternal(oc as any, {} as any, path, { unitScaleToMeters: 0.01 });
+
+    expect(vi.mocked(applyLengthUnitConversionToWriter)).toHaveBeenCalledWith(
+      expect.any(Object),
+      0.01
+    );
   });
 
   it('writeGlbInternal tolerates merge-faces errors', () => {

@@ -19,7 +19,15 @@ type Label = {
   referred?: Label;
 };
 
-const createOcStub = (roots: Label[], options?: { withNameAttr?: boolean; withNameHandle?: boolean }) => {
+const createOcStub = (
+  roots: Label[],
+  options?: {
+    withNameAttr?: boolean;
+    withNameHandle?: boolean;
+    handleHasGet?: boolean;
+    handleReturnsNull?: boolean;
+  }
+) => {
   class LabelSequence {
     items: Label[] = [];
     set(items: Label[]) {
@@ -55,7 +63,7 @@ const createOcStub = (roots: Label[], options?: { withNameAttr?: boolean; withNa
       return this.value == null;
     }
     get() {
-      return this.value;
+      return options?.handleReturnsNull ? null : this.value;
     }
   }
 
@@ -100,6 +108,9 @@ const createOcStub = (roots: Label[], options?: { withNameAttr?: boolean; withNa
   }
   if (options?.withNameHandle === false) {
     delete (oc as any).Handle_TDataStd_Name_1;
+  }
+  if (options?.handleHasGet === false) {
+    delete (HandleAttribute as any).prototype.get;
   }
 
   return oc;
@@ -153,6 +164,48 @@ describe('assembly', () => {
     expect(tree).toEqual([
       { id: 'root', name: 'Root', children: [{ id: 'child', name: 'Child', children: [] }] },
     ]);
+  });
+
+  it('buildAssemblyTree skips missing nodes and handles empty children', () => {
+    const tree = buildAssemblyTree({
+      roots: ['missing', 'root'],
+      nodes: {
+        root: { id: 'root', name: 'Root' },
+      },
+    });
+
+    expect(tree).toEqual([{ id: 'root', name: 'Root', children: [] }]);
+  });
+
+  it('builds node map when docHandle has no get()', () => {
+    const root: Label = { entry: '4:0', name: 'Root', kind: 'part' };
+    root.GetLabelName = () => root.name ?? '';
+
+    const oc = createOcStub([root]);
+    const docHandle = { Main: () => ({}) };
+
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.roots).toEqual(['4:0']);
+  });
+
+  it('handles missing product entry and uses instance entry fallback', () => {
+    const referred: Label = { entry: '', name: 'Referred', kind: 'part' };
+    referred.GetLabelName = () => referred.name ?? '';
+
+    const root: Label = {
+      entry: '4:1',
+      name: 'Instance',
+      kind: 'part',
+      isComponent: true,
+      referred,
+    };
+    root.GetLabelName = () => root.name ?? '';
+
+    const oc = createOcStub([root]);
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.nodes['4:1'].productId).toBe('4:1');
   });
 
   it('merges bom items for repeated product instances', () => {
@@ -269,5 +322,73 @@ describe('assembly', () => {
 
     const nodeMap = buildNodeMap(oc as any, docHandle as any);
     expect(nodeMap.roots).toEqual([]);
+  });
+
+  it('falls back when attribute lookup returns false or throws', () => {
+    const root: Label = { entry: '5:0', kind: 'assembly' };
+    root.FindAttribute_1 = () => false;
+    root.GetLabelName = () => 'LabelName';
+
+    const child: Label = { entry: '5:0:1', kind: 'part' };
+    child.FindAttribute_1 = () => {
+      throw new Error('boom');
+    };
+    child.GetLabelName = () => 'ChildName';
+
+    root.components = [child];
+
+    const oc = createOcStub([root]);
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.nodes['5:0'].name).toBe('LabelName');
+    expect(nodeMap.nodes['5:0/5:0:1'].name).toBe('ChildName');
+  });
+
+  it('handles attribute handles without get()', () => {
+    const root: Label = { entry: '6:0', kind: 'part' };
+    root.FindAttribute_1 = (_guid, handle) => {
+      handle.value = { Get: () => 'Ignored' };
+      return true;
+    };
+    root.GetLabelName = () => 'FallbackLabel';
+
+    const oc = createOcStub([root], { handleHasGet: false });
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.nodes['6:0'].name).toBe('FallbackLabel');
+  });
+
+  it('stringifies non-string label entries', () => {
+    const root: Label = { entry: 123 as unknown as string, kind: 'part' };
+    root.GetLabelName = () => 'Label';
+
+    const oc = createOcStub([root]);
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.roots).toEqual(['123']);
+  });
+
+  it('uses fallback string conversions for label values', () => {
+    const root: Label = { entry: '7:0', kind: 'assembly' };
+    root.GetLabelName = () => ({ ToCString: () => 123 } as any);
+
+    const childA: Label = { entry: '7:0:1', kind: 'part' };
+    childA.GetLabelName = () => ({ ToString: () => 456 } as any);
+
+    const childB: Label = { entry: '7:0:2', kind: 'part' };
+    childB.GetLabelName = () => ({ toString: () => '[object Object]' } as any);
+
+    root.components = [childA, childB];
+
+    const oc = createOcStub([root]);
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.nodes['7:0'].name).toBe('123');
+    expect(nodeMap.nodes['7:0/7:0:1'].name).toBe('456');
+    expect(nodeMap.nodes['7:0/7:0:2'].name).toBe('7:0:2');
   });
 });

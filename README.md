@@ -73,6 +73,10 @@ Converter instance:
 - `converter.createBom(docHandle)`
 - `converter.createMetadataFromGlb(docHandle, options)`
 
+High-level helpers:
+- `convertDocumentToGlbWithRetries(converter, docHandle, options)`
+- `convertCadBufferToGlbWithMetadata(converter, input, options)`
+
 Core utilities:
 - `summarizeGlbGeometry(glb)`
 - `computeBoundsMeters(glb)`
@@ -90,6 +94,7 @@ Core utilities:
 Types:
 - `InputFormat`, `OutputFormat`
 - `ConvertBufferResult`
+- `ConvertCadBufferOptions`, `ConvertCadBufferResult`
 - `BomExport`, `BomItem`, `BomOccurrence`, `NodeMap`
 
 ## Assembly metadata
