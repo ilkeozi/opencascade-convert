@@ -1,0 +1,51 @@
+{
+  "name": "opencascade-convert",
+  "version": "0.0.0",
+  "description": "STEP/IGES to glTF/GLB/OBJ converter built on opencascade.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ilkeozi/opencascade-convert"
+  },
+  "bugs": {
+    "url": "https://github.com/ilkeozi/opencascade-convert/issues"
+  },
+  "homepage": "https://github.com/ilkeozi/opencascade-convert#readme",
+  "main": "dist/browser/index.js",
+  "types": "dist/browser/index.d.ts",
+  "browser": "dist/browser/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test:unit": "vitest run -c vitest.unit.config.mts",
+    "test:integration": "vitest run -c vitest.integration.config.mts",
+    "test:coverage": "vitest run -c vitest.unit.config.mts --coverage"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/browser/index.d.ts",
+      "default": "./dist/browser/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "default": "./dist/browser/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "opencascade.js": "2.0.0-beta.b5ff984"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
