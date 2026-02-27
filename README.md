@@ -9,21 +9,11 @@ Includes assembly metadata extraction and reusable glTF utilities.
 
 ## What it does
 
-- Loads OCCT WebAssembly in the browser.
-- Reads STEP/IGES buffers into XCAF documents.
-- Triangulates geometry with configurable settings.
-- Writes glTF/GLB/OBJ buffers.
-- Builds assembly metadata (BOM + node map).
-- Provides utilities for mesh stats, name cleanup, and triangle explosion policies.
-
-## Design goals
-
-- Browser-first API with no Node.js filesystem dependencies.
-- Preserve CAD metadata (names, colors, layers, materials) where OCCT supports it.
-- Provide deterministic triangulation controls and a reusable triangle-explosion policy.
-- Offer stable assembly metadata extraction (BOM + node map) for downstream mapping.
-- Expose small, reusable glTF utilities (name cleanup, mesh stats, GLB patching).
-- Keep the public surface minimal and stable for reuse across projects.
+- Convert STEP/IGES files in the browser to glTF/GLB/OBJ.
+- Extract assembly metadata (BOM + node map) for mapping CAD parts to glTF nodes.
+- Provide small glTF utilities for stats, name cleanup, and GLB patching.
+- Offer triangulation controls and retry-based safeguards to prevent mesh “triangle explosions.”
+- Expose mesh stats so you can balance fidelity and performance for Three.js exports.
 
 ## Install
 
@@ -38,10 +28,38 @@ can vary between builds.
 When bundling for the browser, make sure your bundler can load
 `opencascade.js` `.wasm` assets (see ocjs.org for bundler guides).
 
-## Quick start
+## Quick start (simple)
+
+Use the high-level helper when you want a single call that returns GLB + metadata.
 
 ```ts
-import { createConverter } from 'opencascade-convert/browser';
+import { createConverter, convertCadBufferToGlbWithMetadata } from 'opencascade-convert/browser';
+
+const converter = await createConverter();
+
+const { glb, metadata, patchedGlb } = convertCadBufferToGlbWithMetadata(
+  converter,
+  new Uint8Array(fileBytes),
+  {
+    inputFormat: 'step',
+    schemaVersion: 'my-app@1',
+    embedMetadataKey: 'myApp',
+    validateNodeMap: true,
+    validateMesh: true,
+  }
+);
+```
+
+## Advanced example (manual control)
+
+Use the lower-level API when you need custom triangulation attempts, thresholds, or unit overrides.
+
+```ts
+import {
+  createConverter,
+  convertDocumentToGlbWithRetries,
+  TRIANGLE_EXPLOSION_THRESHOLDS,
+} from 'opencascade-convert/browser';
 
 const converter = await createConverter();
 const docHandle = converter.readBuffer(new Uint8Array(fileBytes), 'step', {
@@ -51,17 +69,22 @@ const docHandle = converter.readBuffer(new Uint8Array(fileBytes), 'step', {
   preserveMaterials: true,
 });
 
-converter.triangulate(docHandle.get(), {
-  linearDeflection: 1,
-  angularDeflection: 0.5,
-  parallel: true,
-});
-
-const result = converter.writeBuffer(docHandle, 'glb', {
-  nameFormat: 'productOrInstance',
-});
-
-const { nodeMap, bom } = converter.createMetadataFromGlb(docHandle);
+const { glb, meshStats, conversionWarnings } = convertDocumentToGlbWithRetries(
+  converter,
+  docHandle,
+  {
+    triangulate: {
+      linearDeflection: 0.5,
+      angularDeflection: 0.35,
+      parallel: true,
+    },
+    attempts: 4,
+    triangleExplosionThresholds: {
+      ...TRIANGLE_EXPLOSION_THRESHOLDS,
+      MAX_TRIANGLES: 2_000_000,
+    },
+  }
+);
 ```
 
 ## API
@@ -73,35 +96,22 @@ Converter instance:
 - `converter.readBuffer(input, format, options)`
 - `converter.triangulate(doc, options)`
 - `converter.writeBuffer(docHandle, format, options)`
-- `converter.createNodeMap(docHandle)`
-- `converter.createBom(docHandle)`
 - `converter.createMetadataFromGlb(docHandle, options)`
 
 High-level helpers:
 - `convertDocumentToGlbWithRetries(converter, docHandle, options)`
 - `convertCadBufferToGlbWithMetadata(converter, input, options)`
 
-Core utilities:
-- `summarizeGlbGeometry(glb)`
-- `computeBoundsMeters(glb)`
-- `maxDimension(bounds)`
-- `buildPrettyNameOverridesFromGlb(glb)`
-- `buildGltfNodeIndexByOcafEntry(glb)`
-- `TRIANGLE_EXPLOSION_THRESHOLDS`
-- `getTriangulationForAttempt(input, attemptIndex)`
-- `isTriangleExplosion(meshStats, thresholds?)`
-- `readInputUnitScaleToMeters(oc, docHandle)`
-- `applyLengthUnitConversionToWriter(writer, scaleToMeters)`
-- `unitNameFromScale(scaleToMeters)`
-- `injectAssetExtrasIntoGlb(glb, extras)`
+Full API reference:
 
-Types:
-- `InputFormat`, `OutputFormat`
-- `ConvertBufferResult`
-- `ConvertCadBufferOptions`, `ConvertCadBufferResult`
-- `BomExport`, `BomItem`, `BomOccurrence`, `NodeMap`
+- https://ilkeozi.github.io/opencascade-convert/
 
 ## Assembly metadata
+
+There are two schema families:
+
+- Raw schemas from `createNodeMap` and `createBom`.
+- Mapped schemas inside `convertCadBufferToGlbWithMetadata().metadata`, which add glTF indices.
 
 `createNodeMap` and `createBom` provide stable IDs you can map to glTF nodes.
 
@@ -147,6 +157,94 @@ Example `bom`:
       ]
     }
   ]
+}
+```
+
+Example `mappedNodeMap` (from `metadata.nodeMap`):
+
+```json
+{
+  "roots": ["0:1"],
+  "nodes": {
+    "0:1": {
+      "id": "0:1",
+      "name": "Gear Box",
+      "productId": "0:1",
+      "parentId": null,
+      "childrenIds": ["0:1/0:1:2"],
+      "gltfNodeIndex": 0,
+      "gltfMeshIndex": 0
+    }
+  }
+}
+```
+
+Example `bomSummary` (from `metadata.bom`):
+
+```json
+[
+  {
+    "name": "Flat Washer",
+    "quantity": 4,
+    "productId": "0:1:2",
+    "kind": "part"
+  }
+]
+```
+
+Example `metadata` (from `convertCadBufferToGlbWithMetadata`):
+
+```json
+{
+  "schemaVersion": "my-app@1",
+  "meshStats": {
+    "triangles": 12,
+    "meshCount": 1,
+    "nodeCount": 1,
+    "primitiveCount": 1,
+    "nodesWithMeshCount": 1,
+    "primitivesWithPositionCount": 1
+  },
+  "conversionWarnings": [],
+  "assemblyTree": [
+    {
+      "id": "0:1",
+      "name": "Gear Box",
+      "children": []
+    }
+  ],
+  "nodeMap": {
+    "roots": ["0:1"],
+    "nodes": {
+      "0:1": {
+        "id": "0:1",
+        "name": "Gear Box",
+        "productId": "0:1",
+        "parentId": null,
+        "childrenIds": [],
+        "gltfNodeIndex": 0,
+        "gltfMeshIndex": 0
+      }
+    }
+  },
+  "bom": [
+    {
+      "name": "Gear Box",
+      "quantity": 1,
+      "productId": "0:1",
+      "kind": "assembly"
+    }
+  ],
+  "units": {
+    "inputLengthUnit": "mm",
+    "inputUnitSource": "override",
+    "outputLengthUnit": "m",
+    "scaleToMeters": 0.001
+  },
+  "boundsMeters": {
+    "min": [0, 0, 0],
+    "max": [1, 1, 1]
+  }
 }
 ```
 

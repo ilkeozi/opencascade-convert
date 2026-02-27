@@ -1,8 +1,9 @@
 {
   "name": "opencascade-convert",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "STEP/IGES to glTF/GLB/OBJ converter built on opencascade.js",
   "license": "MIT",
+  "author": "İlker Özin",
   "repository": {
     "type": "git",
     "url": "https://github.com/ilkeozi/opencascade-convert"
@@ -17,6 +18,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "docs:api": "typedoc",
+    "prepublishOnly": "npm run build",
     "test:unit": "vitest run -c vitest.unit.config.mts",
     "test:integration": "vitest run -c vitest.integration.config.mts",
     "test:coverage": "vitest run -c vitest.unit.config.mts --coverage"
