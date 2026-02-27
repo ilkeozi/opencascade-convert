@@ -1,3 +1,6 @@
+/**
+ * Thrown when a conversion step fails (read/triangulate/write).
+ */
 export class ConversionError extends Error {
   constructor(message: string) {
     super(message);
@@ -5,6 +8,9 @@ export class ConversionError extends Error {
   }
 }
 
+/**
+ * Thrown when input validation fails.
+ */
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message);

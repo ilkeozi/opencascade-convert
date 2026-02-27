@@ -5,11 +5,18 @@ export type GltfNodeIndex = {
   gltfMeshIndex?: number;
 };
 
+/**
+ * Extracts the last OCAF entry token from a node name (e.g. "0:1:2").
+ * @returns The entry string or null when not found.
+ */
 export function extractOcafEntryFromName(name: string) {
   const matches = name.match(/\b\d+(?::\d+)+\b/g);
   return matches ? matches[matches.length - 1] : null;
 }
 
+/**
+ * Strips OCAF/NAUO tokens from a node name while preserving custom tags.
+ */
 export function cleanGltfNodeName(name: string) {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -44,6 +51,10 @@ export function cleanGltfNodeName(name: string) {
   return result || trimmed;
 }
 
+/**
+ * Builds a map of OCAF entry => cleaned display name from GLB nodes.
+ * Entries are skipped when the cleaned name equals the entry.
+ */
 export function buildPrettyNameOverridesFromGlb(glb: Uint8Array) {
   const gltf = parseGlbJson(glb) as any;
   const nodes = Array.isArray(gltf?.nodes) ? (gltf.nodes as any[]) : [];
@@ -64,6 +75,10 @@ export function buildPrettyNameOverridesFromGlb(glb: Uint8Array) {
   return overrides;
 }
 
+/**
+ * Builds a map of OCAF entry => glTF node/mesh indices.
+ * Duplicate entries are ignored after the first occurrence.
+ */
 export function buildGltfNodeIndexByOcafEntry(glb: Uint8Array) {
   const gltf = parseGlbJson(glb) as any;
   const nodes = Array.isArray(gltf?.nodes) ? (gltf.nodes as any[]) : [];

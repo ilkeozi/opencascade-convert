@@ -1,7 +1,14 @@
 import { parseGlbJson } from './glb-parse';
 
+/**
+ * Map of OCAF entry => display name override.
+ */
 export type NameOverrideMap = Record<string, string>;
 
+/**
+ * Extracts name overrides from a GLB by parsing node names.
+ * Returns an empty map when JSON parsing fails or nodes are missing.
+ */
 export function extractNameOverridesFromGlb(glb: Uint8Array): NameOverrideMap {
   let json: any;
   try {

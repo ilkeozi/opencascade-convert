@@ -8,6 +8,15 @@ import { ConversionError } from './errors';
 import type { OcctDocumentHandle } from './document';
 import { writeGlbInternal, writeGltfInternal, writeObjInternal } from './writer-core';
 
+/**
+ * Writes an OCCT document to the requested output format.
+ * @param oc OpenCascade instance.
+ * @param docHandle XCAF document handle.
+ * @param format Output format.
+ * @param options Writer options.
+ * @returns Discriminated union containing the output buffer(s).
+ * @throws ConversionError when output generation fails.
+ */
 export function writeDocumentToBuffer(
   oc: OpenCascadeInstance,
   docHandle: OcctDocumentHandle,

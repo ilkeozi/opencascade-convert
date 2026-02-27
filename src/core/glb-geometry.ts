@@ -14,6 +14,11 @@ export type GlbGeometryStats = {
   primitivesWithPositionCount: number;
 };
 
+/**
+ * Computes axis-aligned bounds in meters from a GLB buffer.
+ * Uses accessor min/max when available; falls back to BIN position data otherwise.
+ * @throws Error when required meshes/accessors/BIN data are missing or invalid.
+ */
 export function computeBoundsMeters(glb: Uint8Array): GlbBounds {
   const gltf = parseGlbJson(glb) as any;
   if (!gltf || !Array.isArray(gltf.meshes) || !Array.isArray(gltf.accessors)) {
@@ -86,7 +91,7 @@ export function computeBoundsMeters(glb: Uint8Array): GlbBounds {
       if (
         !accessor ||
         accessor.type !== 'VEC3' ||
-        accessor.componentType !== 5126
+        accessor.componentType !== 5126 // Float32
       ) {
         continue;
       }
@@ -96,7 +101,7 @@ export function computeBoundsMeters(glb: Uint8Array): GlbBounds {
       const accOffset = Number(accessor.byteOffset ?? 0);
       const start = bvOffset + accOffset;
       const count = Number(accessor.count ?? 0);
-      const stride = Number(bv.byteStride ?? 12);
+      const stride = Number(bv.byteStride ?? 12); // 3 * 4-byte floats
       for (let i = 0; i < count; i += 1) {
         const off = start + i * stride;
         if (off + 12 > binView.byteLength) break;
@@ -127,6 +132,9 @@ export function computeBoundsMeters(glb: Uint8Array): GlbBounds {
   };
 }
 
+/**
+ * Returns the maximum axis length from bounds.
+ */
 export function maxDimension(bounds: GlbBounds) {
   const dx = bounds.max[0] - bounds.min[0];
   const dy = bounds.max[1] - bounds.min[1];
@@ -134,6 +142,11 @@ export function maxDimension(bounds: GlbBounds) {
   return Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
 }
 
+/**
+ * Summarizes mesh and node counts from a GLB buffer.
+ * Triangles are counted from indices when present; otherwise from POSITION accessor counts.
+ * Only TRIANGLES mode (4) contributes to triangle counts.
+ */
 export function summarizeGlbGeometry(glb: Uint8Array): GlbGeometryStats {
   const gltf = parseGlbJson(glb) as any;
   const accessors = Array.isArray(gltf?.accessors)
@@ -155,7 +168,7 @@ export function summarizeGlbGeometry(glb: Uint8Array): GlbGeometryStats {
         primitivesWithPositionCount += 1;
       }
 
-      const mode = typeof prim?.mode === 'number' ? prim.mode : 4;
+      const mode = typeof prim?.mode === 'number' ? prim.mode : 4; // TRIANGLES
       if (mode !== 4) {
         return;
       }

@@ -16,6 +16,7 @@
   "browser": "dist/browser/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "docs:api": "typedoc",
     "test:unit": "vitest run -c vitest.unit.config.mts",
     "test:integration": "vitest run -c vitest.integration.config.mts",
     "test:coverage": "vitest run -c vitest.unit.config.mts --coverage"
@@ -45,6 +46,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^2.1.8",
+    "typedoc": "^0.27.5",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
   }

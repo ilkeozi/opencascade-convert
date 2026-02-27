@@ -4,15 +4,22 @@ function approxEqual(a: number, b: number, epsilon = 1e-9) {
   return Math.abs(a - b) <= epsilon;
 }
 
+/**
+ * Converts a scale factor to a human-readable unit name.
+ */
 export function unitNameFromScale(scaleToMeters: number) {
-  if (approxEqual(scaleToMeters, 1)) return 'm';
-  if (approxEqual(scaleToMeters, 0.001)) return 'mm';
-  if (approxEqual(scaleToMeters, 0.01)) return 'cm';
-  if (approxEqual(scaleToMeters, 0.0254)) return 'in';
-  if (approxEqual(scaleToMeters, 0.3048)) return 'ft';
+  if (approxEqual(scaleToMeters, 1)) return 'm'; // meters
+  if (approxEqual(scaleToMeters, 0.001)) return 'mm'; // millimeters
+  if (approxEqual(scaleToMeters, 0.01)) return 'cm'; // centimeters
+  if (approxEqual(scaleToMeters, 0.0254)) return 'in'; // inches
+  if (approxEqual(scaleToMeters, 0.3048)) return 'ft'; // feet
   return 'unknown';
 }
 
+/**
+ * Reads the input document length unit scale (to meters) from OCCT metadata.
+ * @returns Scale and source identifier for diagnostics.
+ */
 export function readInputUnitScaleToMeters(
   oc: OpenCascadeInstance,
   docHandle: any
@@ -45,6 +52,9 @@ export function readInputUnitScaleToMeters(
   return { scaleToMeters: 1, source: 'unknown' };
 }
 
+/**
+ * Applies a length unit scale to the writer when supported.
+ */
 export function applyLengthUnitConversionToWriter(
   writer: any,
   scaleToMeters: number
@@ -63,7 +73,7 @@ export function applyLengthUnitConversionToWriter(
       conv.SetInputLengthUnit(scaleToMeters);
     }
     if (typeof conv.SetOutputLengthUnit === 'function') {
-      conv.SetOutputLengthUnit(1.0);
+      conv.SetOutputLengthUnit(1.0); // meters
     }
     if (typeof writer.SetCoordinateSystemConverter === 'function') {
       writer.SetCoordinateSystemConverter(conv);

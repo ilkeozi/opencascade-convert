@@ -60,6 +60,10 @@ export function buildBom(
   return { roots, items: Array.from(itemsByProduct.values()) };
 }
 
+/**
+ * Builds a nested assembly tree from a node map.
+ * Missing node references are skipped.
+ */
 export function buildAssemblyTree(nodeMap: {
   roots: string[];
   nodes: Record<string, { id: string; name: string; children?: string[]; childrenIds?: string[] }>;

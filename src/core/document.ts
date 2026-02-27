@@ -1,6 +1,9 @@
 import type { InputFormat, ReadOptions, OpenCascadeInstance } from './types';
 import { ConversionError } from './errors';
 
+/**
+ * Opaque OCCT document handle wrapper from opencascade.js bindings.
+ */
 export type OcctDocumentHandle = any;
 
 const DEFAULT_READ_OPTIONS: Required<ReadOptions> = {
@@ -10,6 +13,15 @@ const DEFAULT_READ_OPTIONS: Required<ReadOptions> = {
   preserveMaterials: true,
 };
 
+/**
+ * Reads a STEP/IGES buffer into an OCCT XCAF document handle.
+ * @param oc OpenCascade instance.
+ * @param payload Raw file bytes.
+ * @param format Input format.
+ * @param options Reader options.
+ * @returns Document handle.
+ * @throws ConversionError when OCCT reader fails.
+ */
 export function readCadBuffer(
   oc: OpenCascadeInstance,
   payload: Uint8Array,
@@ -25,6 +37,9 @@ export function readCadBuffer(
   return transferDocument(oc, reader, payload, fileName);
 }
 
+/**
+ * Applies reader options across possible OCCT overloads.
+ */
 export function applyReaderSettings(reader: any, options: ReadOptions) {
   // OpenCascade.js sometimes binds overloaded methods with suffixes (e.g. `SetNameMode_1`).
   // Prefer the canonical name, but fall back to suffixed variants.

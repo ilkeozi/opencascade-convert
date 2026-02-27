@@ -21,86 +21,281 @@ import { readInputUnitScaleToMeters, unitNameFromScale } from '../core/unit-scal
 import { injectAssetExtrasIntoGlb } from '../core/glb-metadata';
 import type { OpenCascadeConverter } from './converter';
 
+/**
+ * Warning emitted during conversion.
+ * @property code Stable warning identifier.
+ * @property message Human-readable description.
+ * @property detail Optional machine-readable context.
+ */
 export type ConversionWarning = {
+  /**
+   * Stable warning identifier (machine-readable).
+   */
   code: string;
+  /**
+   * Human-readable description of the condition.
+   */
   message: string;
+  /**
+   * Additional structured data for diagnostics.
+   */
   detail?: Record<string, unknown>;
 };
 
+/**
+ * Options for a GLB conversion attempt with retries.
+ */
 export type GlbConversionOptions = {
+  /**
+   * Triangulation parameters applied per attempt.
+   * `relative` will be forced to false.
+   */
   triangulate?: TriangulateOptions;
+  /**
+   * glTF name format used during export.
+   */
   nameFormat?: NameFormat;
+  /**
+   * Number of triangulation attempts to perform (min 1).
+   */
   attempts?: number;
+  /**
+   * Override input unit scale in meters (skips document unit detection).
+   */
   unitScaleToMeters?: number;
+  /**
+   * Override triangle explosion detection thresholds.
+   */
   triangleExplosionThresholds?: typeof TRIANGLE_EXPLOSION_THRESHOLDS;
 };
 
+/**
+ * Result from a GLB conversion attempt.
+ */
 export type GlbConversionResult = {
+  /**
+   * GLB output buffer.
+   */
   glb: Uint8Array;
+  /**
+   * Mesh statistics derived from the GLB.
+   */
   meshStats: GlbGeometryStats;
+  /**
+   * Triangulation parameters that produced the final result.
+   */
   triangulateUsed: TriangulateOptions;
+  /**
+   * Warnings encountered during conversion.
+   */
   conversionWarnings: ConversionWarning[];
 };
 
 export type ConvertedNode = {
+  /**
+   * Stable node identifier (path-based).
+   */
   id: string;
+  /**
+   * Display name (pretty name if available).
+   */
   name: string;
+  /**
+   * Product identifier shared across instances.
+   */
   productId: string;
+  /**
+   * Parent node identifier, if any.
+   */
   parentId?: string;
+  /**
+   * Child node identifiers.
+   */
   childrenIds: string[];
+  /**
+   * Index of the mapped glTF node.
+   */
   gltfNodeIndex: number;
+  /**
+   * Index of the mapped glTF mesh, if any.
+   */
   gltfMeshIndex?: number;
 };
 
+/**
+ * Node map after resolving glTF indices.
+ */
 export type MappedNodeMap = {
+  /**
+   * Root node identifiers.
+   */
   roots: string[];
+  /**
+   * Nodes keyed by stable node id.
+   */
   nodes: Record<string, ConvertedNode>;
 };
 
+/**
+ * BOM summary item derived from BOM + node map.
+ */
 export type BomSummaryItem = {
+  /**
+   * Display name (pretty name, product name, or fallback).
+   */
   name: string;
+  /**
+   * Number of occurrences for this product.
+   */
   quantity: number;
+  /**
+   * Product identifier, when available.
+   */
   productId?: string;
+  /**
+   * Product kind (e.g. part or assembly) when available.
+   */
   kind?: string;
 };
 
+/**
+ * Metadata produced alongside GLB output.
+ * Contains mesh stats, BOM, node map, units, bounds, and warnings.
+ * `schemaVersion` is optional; `units.outputLengthUnit` is always `'m'`.
+ */
 export type ConversionMetadata = {
+  /**
+   * Optional schema/version tag for downstream consumers.
+   */
   schemaVersion?: string;
+  /**
+   * Mesh statistics derived from the GLB.
+   */
   meshStats: GlbGeometryStats;
+  /**
+   * Warnings emitted during conversion.
+   */
   conversionWarnings: ConversionWarning[];
+  /**
+   * Assembly tree derived from the mapped node map.
+   */
   assemblyTree: ReturnType<typeof buildAssemblyTree>;
+  /**
+   * Node map with glTF indices resolved.
+   */
   nodeMap: MappedNodeMap;
+  /**
+   * BOM summary derived from the BOM and node map.
+   */
   bom: BomSummaryItem[];
+  /**
+   * Unit metadata for input and output lengths.
+   */
   units: {
+    /**
+     * Input unit name inferred from the document or override.
+     */
     inputLengthUnit: string;
+    /**
+     * Source for unit inference (e.g. override or OCCT source).
+     */
     inputUnitSource: string;
+    /**
+     * Output unit; always meters.
+     */
     outputLengthUnit: 'm';
+    /**
+     * Scale factor to meters applied during export.
+     */
     scaleToMeters: number;
   };
+  /**
+   * Axis-aligned bounds in meters.
+   */
   boundsMeters: { min: [number, number, number]; max: [number, number, number] };
 };
 
+/**
+ * CAD buffer conversion options.
+ */
 export type ConvertCadBufferOptions = {
+  /**
+   * Input format ('step' or 'iges').
+   */
   inputFormat: InputFormat;
+  /**
+   * Triangulation parameters applied per attempt.
+   * `relative` will be forced to false.
+   */
   triangulate?: TriangulateOptions;
+  /**
+   * glTF name format used during export.
+   */
   nameFormat?: NameFormat;
+  /**
+   * Reader options applied during import.
+   */
   readOptions?: ReadOptions;
+  /**
+   * Number of triangulation attempts to perform (min 1).
+   */
   attempts?: number;
+  /**
+   * Override input unit scale in meters (skips document unit detection).
+   */
   unitScaleToMeters?: number;
+  /**
+   * Optional schema version attached to metadata output.
+   */
   schemaVersion?: string;
+  /**
+   * Embed metadata into the GLB asset extras under this key.
+   */
   embedMetadataKey?: string;
+  /**
+   * Throw when node map is empty.
+   */
   validateNodeMap?: boolean;
+  /**
+   * Throw when mesh statistics indicate empty geometry.
+   */
   validateMesh?: boolean;
 };
 
+/**
+ * Result from CAD buffer conversion with metadata.
+ */
 export type ConvertCadBufferResult = {
+  /**
+   * GLB output buffer.
+   */
   glb: Uint8Array;
+  /**
+   * GLB output with embedded metadata extras, when requested.
+   */
   patchedGlb?: Uint8Array;
+  /**
+   * Mesh statistics derived from the GLB.
+   */
   meshStats: GlbGeometryStats;
+  /**
+   * Warnings emitted during conversion.
+   */
   conversionWarnings: ConversionWarning[];
+  /**
+   * Structured metadata extracted from the CAD document and GLB.
+   */
   metadata: ConversionMetadata;
 };
 
+/**
+ * Converts an OCCT document to GLB with retry-based triangulation.
+ * @param converter Converter instance.
+ * @param docHandle XCAF document handle.
+ * @param options Conversion options.
+ * @returns GLB data, mesh stats, triangulation used, and warnings.
+ * @throws Error when GLB output is not produced.
+ */
 export function convertDocumentToGlbWithRetries(
   converter: OpenCascadeConverter,
   docHandle: OcctDocumentHandle,
@@ -271,6 +466,14 @@ function buildBomSummary(
   }));
 }
 
+/**
+ * Converts a CAD buffer to GLB and assembles metadata outputs.
+ * @param converter Converter instance.
+ * @param input Raw file bytes.
+ * @param options Conversion + metadata options.
+ * @returns GLB buffer, optional patched GLB, mesh stats, warnings, metadata.
+ * @throws Error when validation fails or glTF mapping cannot be built.
+ */
 export function convertCadBufferToGlbWithMetadata(
   converter: OpenCascadeConverter,
   input: Uint8Array,

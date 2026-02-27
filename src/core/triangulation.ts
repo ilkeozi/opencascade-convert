@@ -1,5 +1,8 @@
 import type { TriangulateOptions, OpenCascadeInstance } from './types';
 
+/**
+ * OCCT document (raw or handle target).
+ */
 export type OcctDocument = any;
 
 const env =
@@ -8,13 +11,20 @@ const env =
     : undefined;
 const DEBUG_TRIANGULATION = env?.OCCT_CONVERT_DEBUG === '1';
 
+// Default meshing parameters used when caller provides no overrides.
 const DEFAULT_TRIANGULATE_OPTIONS: Required<TriangulateOptions> = {
-  linearDeflection: 1,
-  angularDeflection: 0.5,
-  relative: false,
-  parallel: true,
+  linearDeflection: 1, // Absolute deflection (model units).
+  angularDeflection: 0.5, // Radians; coarse default to balance speed/detail.
+  relative: false, // Absolute deflection is more predictable for CAD data.
+  parallel: true, // Prefer parallel meshing when supported.
 };
 
+/**
+ * Performs meshing on all free shapes in the document.
+ * @param oc OpenCascade instance.
+ * @param doc OCCT document.
+ * @param options Triangulation settings.
+ */
 export function triangulateDocument(
   oc: OpenCascadeInstance,
   doc: OcctDocument,

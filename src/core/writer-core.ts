@@ -3,6 +3,9 @@ import { applyLengthUnitConversionToWriter } from './unit-scale';
 import type { WriteOptions, OpenCascadeInstance } from './types';
 import type { OcctDocumentHandle } from './document';
 
+/**
+ * Builds an OCCT string map from key/value metadata pairs.
+ */
 export function createMetadataMap(
   oc: OpenCascadeInstance,
   metadata?: Record<string, string>
@@ -19,6 +22,9 @@ export function createMetadataMap(
   return map;
 }
 
+/**
+ * Applies the name format to the writer when supported.
+ */
 export function applyGltfNameFormat(
   oc: OpenCascadeInstance,
   writer: any,
@@ -43,6 +49,9 @@ function applyLengthUnitConversion(writer: any, options: WriteOptions) {
   applyLengthUnitConversionToWriter(writer, scale as number);
 }
 
+/**
+ * Writes a GLB file to the OCCT virtual FS and returns its bytes.
+ */
 export function writeGlbInternal(
   oc: OpenCascadeInstance,
   docHandle: OcctDocumentHandle,
@@ -52,7 +61,7 @@ export function writeGlbInternal(
   const map = createMetadataMap(oc, options.metadata);
   const progress = new oc.Message_ProgressRange_1();
   const file = new oc.TCollection_AsciiString_2(pathInternal);
-  const writer = new oc.RWGltf_CafWriter(file, true);
+  const writer = new oc.RWGltf_CafWriter(file, true); // true => GLB (binary)
   applyGltfNameFormat(oc, writer, options);
   applyLengthUnitConversion(writer, options);
   if (writer && typeof writer.SetMergeFaces === 'function') {
@@ -71,6 +80,9 @@ export function writeGlbInternal(
   return data;
 }
 
+/**
+ * Writes a glTF + BIN pair to the OCCT virtual FS and returns their bytes.
+ */
 export function writeGltfInternal(
   oc: OpenCascadeInstance,
   docHandle: OcctDocumentHandle,
@@ -81,7 +93,7 @@ export function writeGltfInternal(
   const map = createMetadataMap(oc, options.metadata);
   const progress = new oc.Message_ProgressRange_1();
   const file = new oc.TCollection_AsciiString_2(gltfPath);
-  const writer = new oc.RWGltf_CafWriter(file, false);
+  const writer = new oc.RWGltf_CafWriter(file, false); // false => glTF + BIN
   applyGltfNameFormat(oc, writer, options);
   applyLengthUnitConversion(writer, options);
   if (writer && typeof writer.SetMergeFaces === 'function') {
@@ -104,6 +116,9 @@ export function writeGltfInternal(
   return { gltfData, binData, binPath };
 }
 
+/**
+ * Writes an OBJ file to the OCCT virtual FS and returns its bytes.
+ */
 export function writeObjInternal(
   oc: OpenCascadeInstance,
   docHandle: OcctDocumentHandle,

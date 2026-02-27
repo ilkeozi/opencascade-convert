@@ -1,17 +1,25 @@
-const GLB_HEADER_LENGTH = 12;
-const GLB_CHUNK_HEADER_LENGTH = 8;
+// GLB format constants (spec-defined).
+const GLB_HEADER_LENGTH = 12; // Magic (4) + version (4) + length (4)
+const GLB_CHUNK_HEADER_LENGTH = 8; // Chunk length (4) + chunk type (4)
 
 // 'glTF' in little-endian u32.
 const GLB_MAGIC = 0x46546c67;
 
 // Chunk types per GLB spec.
-const GLB_JSON_CHUNK = 0x4e4f534a; // 'JSON'
+const GLB_JSON_CHUNK = 0x4e4f534a; // 'JSON' in little-endian u32
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder('utf-8');
 
+/**
+ * Extras payload injected into the GLB asset block.
+ */
 export type AssetExtrasPayload = Record<string, unknown>;
 
+/**
+ * Injects/merges asset extras into a GLB buffer and returns a new GLB.
+ * @throws Error when the GLB is invalid or extras are not serializable.
+ */
 export function injectAssetExtrasIntoGlb(
   glb: Uint8Array,
   extras: AssetExtrasPayload

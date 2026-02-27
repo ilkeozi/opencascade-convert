@@ -152,6 +152,18 @@ Example `bom`:
 - For better names, export AP242 (or enable product/part names) in your CAD tool.
 - Large assemblies can take time and memory during triangulation.
 
+## Docs
+
+Hosted API docs:
+
+- https://ilkeozi.github.io/opencascade-convert/
+
+Generate locally:
+
+```bash
+npm run docs:api
+```
+
 ## Build
 
 ```bash
