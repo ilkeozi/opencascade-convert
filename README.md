@@ -1,5 +1,9 @@
 # opencascade-convert
 
+[![Docs](https://img.shields.io/badge/docs-API-blue)](https://ilkeozi.github.io/opencascade-convert/)
+[![CI](https://github.com/ilkeozi/opencascade-convert/actions/workflows/ci.yml/badge.svg)](https://github.com/ilkeozi/opencascade-convert/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ilkeozi/opencascade-convert/branch/main/graph/badge.svg)](https://codecov.io/gh/ilkeozi/opencascade-convert)
+
 Browser-first STEP/IGES to glTF/GLB/OBJ conversion on top of `opencascade.js`.
 Includes assembly metadata extraction and reusable glTF utilities.
 
