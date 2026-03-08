@@ -15,6 +15,10 @@ Includes assembly metadata extraction and reusable glTF utilities.
 - Offer triangulation controls and retry-based safeguards to prevent mesh “triangle explosions.”
 - Expose mesh stats so you can balance fidelity and performance for Three.js exports.
 
+## Demo
+
+- [Assembly hierarchy explorer](https://www.bunlar.org/subjects/climate-tech/assembly-hierarchy-explorer) — browser demo for exploring STEP assembly structure and metadata
+
 ## Install
 
 ```bash
