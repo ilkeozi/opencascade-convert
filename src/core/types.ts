@@ -116,6 +116,23 @@ export type NameFormat =
 export type AssemblyNodeKind = 'assembly' | 'part';
 
 /**
+ * Physical properties measured from product geometry.
+ * Values are based on the output length unit (meters by default):
+ * - surfaceArea uses unit^2
+ * - volume uses unit^3
+ */
+export type PhysicalProps = {
+  /**
+   * Surface area in squared output units.
+   */
+  surfaceArea: number | null;
+  /**
+   * Volume in cubed output units.
+   */
+  volume: number | null;
+};
+
+/**
  * Assembly node metadata.
  */
 export type AssemblyNode = {
@@ -155,6 +172,10 @@ export type AssemblyNode = {
    * Node path segments.
    */
   path: string[];
+  /**
+   * Physical properties for this product.
+   */
+  physical: PhysicalProps;
 };
 
 /**
@@ -217,6 +238,10 @@ export type BomItem = {
    * Occurrence instances for this product.
    */
   instances: BomOccurrence[];
+  /**
+   * Physical properties for this product.
+   */
+  physical: PhysicalProps;
 };
 
 /**

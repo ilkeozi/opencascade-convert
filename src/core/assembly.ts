@@ -5,8 +5,10 @@ import type {
   BomOccurrence,
   NodeMap,
   OpenCascadeInstance,
+  PhysicalProps,
 } from './types';
 import type { OcctDocumentHandle } from './document';
+import { readInputUnitScaleToMeters } from './unit-scale';
 
 type AssemblyBuildResult = {
   roots: string[];
@@ -15,25 +17,41 @@ type AssemblyBuildResult = {
 };
 
 export type NameOverrideMap = Record<string, string>;
+type BuildAssemblyOptions = {
+  scaleToMeters?: number;
+};
+
+const NULL_PHYSICAL: PhysicalProps = {
+  surfaceArea: null,
+  volume: null,
+};
 
 export function buildNodeMap(
   oc: OpenCascadeInstance,
   docHandle: OcctDocumentHandle,
-  nameOverrides?: NameOverrideMap
+  nameOverrides?: NameOverrideMap,
+  options: BuildAssemblyOptions = {}
 ): NodeMap {
-  const { roots, nodes } = buildAssemblyGraph(oc, docHandle, nameOverrides);
+  const { roots, nodes } = buildAssemblyGraph(
+    oc,
+    docHandle,
+    nameOverrides,
+    options
+  );
   return { roots, nodes };
 }
 
 export function buildBom(
   oc: OpenCascadeInstance,
   docHandle: OcctDocumentHandle,
-  nameOverrides?: NameOverrideMap
+  nameOverrides?: NameOverrideMap,
+  options: BuildAssemblyOptions = {}
 ): BomExport {
   const { roots, nodes, occurrences } = buildAssemblyGraph(
     oc,
     docHandle,
-    nameOverrides
+    nameOverrides,
+    options
   );
   const itemsByProduct = new Map<string, BomItem>();
 
@@ -54,6 +72,7 @@ export function buildBom(
       kind: node.kind,
       quantity: 1,
       instances: [occurrence],
+      physical: node.physical,
     });
   });
 
@@ -85,12 +104,15 @@ export function buildAssemblyTree(nodeMap: {
 function buildAssemblyGraph(
   oc: OpenCascadeInstance,
   docHandle: OcctDocumentHandle,
-  nameOverrides?: NameOverrideMap
+  nameOverrides?: NameOverrideMap,
+  options: BuildAssemblyOptions = {}
 ): AssemblyBuildResult {
   const doc = docHandle.get ? docHandle.get() : docHandle;
   const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main()).get();
   const roots = new oc.TDF_LabelSequence_1();
   shapeTool.GetFreeShapes(roots);
+  const scaleToMeters = resolveScaleToMeters(oc, docHandle, options);
+  const physicalByProductId = new Map<string, PhysicalProps>();
 
   const nodes: NodeMap['nodes'] = {};
   const occurrences: BomOccurrence[] = [];
@@ -104,7 +126,9 @@ function buildAssemblyGraph(
       [],
       nodes,
       occurrences,
-      nameOverrides
+      nameOverrides,
+      physicalByProductId,
+      scaleToMeters
     );
     if (nodeId) {
       rootIds.push(nodeId);
@@ -120,7 +144,9 @@ function traverseLabel(
   parentPath: string[],
   nodes: NodeMap['nodes'],
   occurrences: BomOccurrence[],
-  nameOverrides?: NameOverrideMap
+  nameOverrides?: NameOverrideMap,
+  physicalByProductId?: Map<string, PhysicalProps>,
+  scaleToMeters = 1
 ): string | null {
   const labelEntry = getLabelEntry(oc, label);
   const instanceName = resolveLabelName(oc, label);
@@ -141,6 +167,15 @@ function traverseLabel(
   const productOverride = productEntry
     ? nameOverrides?.[productEntry]
     : undefined;
+  const productId = productEntry || instanceEntry;
+  const physical = resolvePhysical(
+    oc,
+    kind,
+    productId,
+    productLabel,
+    physicalByProductId,
+    scaleToMeters
+  );
 
   if (!nodes[nodeId]) {
     nodes[nodeId] = {
@@ -153,7 +188,7 @@ function traverseLabel(
         productName ||
         instanceEntry,
       kind,
-      productId: productEntry || instanceEntry,
+      productId,
       productName:
         productOverride ||
         productName ||
@@ -163,6 +198,7 @@ function traverseLabel(
       parentId: parentNodeId,
       children: [],
       path,
+      physical,
     };
   }
 
@@ -186,7 +222,16 @@ function traverseLabel(
       index += 1
     ) {
       const component = components.Value(index);
-      traverseLabel(oc, component, path, nodes, occurrences, nameOverrides);
+      traverseLabel(
+        oc,
+        component,
+        path,
+        nodes,
+        occurrences,
+        nameOverrides,
+        physicalByProductId,
+        scaleToMeters
+      );
     }
   }
 
@@ -353,4 +398,158 @@ function fallbackString(value: any) {
     return text && text !== '[object Object]' ? String(text) : '';
   }
   return '';
+}
+
+function resolveScaleToMeters(
+  oc: OpenCascadeInstance,
+  docHandle: OcctDocumentHandle,
+  options: BuildAssemblyOptions
+) {
+  if (
+    Number.isFinite(options.scaleToMeters) &&
+    (options.scaleToMeters as number) > 0
+  ) {
+    return options.scaleToMeters as number;
+  }
+  return readInputUnitScaleToMeters(oc, docHandle).scaleToMeters;
+}
+
+function resolvePhysical(
+  oc: OpenCascadeInstance,
+  kind: AssemblyNodeKind,
+  productId: string,
+  productLabel: any,
+  physicalByProductId: Map<string, PhysicalProps> | undefined,
+  scaleToMeters: number
+) {
+  if (kind === 'assembly') {
+    return NULL_PHYSICAL;
+  }
+
+  const cached = physicalByProductId?.get(productId);
+  if (cached) {
+    return cached;
+  }
+
+  const computed = computePhysicalForLabel(oc, productLabel, scaleToMeters);
+  physicalByProductId?.set(productId, computed);
+  return computed;
+}
+
+function computePhysicalForLabel(
+  oc: OpenCascadeInstance,
+  label: any,
+  scaleToMeters: number
+): PhysicalProps {
+  const shape = tryGetShape(oc, label);
+  if (!shape) {
+    return NULL_PHYSICAL;
+  }
+
+  const gpropsCtor = oc?.GProp_GProps_1 ?? oc?.GProp_GProps;
+  if (typeof gpropsCtor !== 'function') {
+    return NULL_PHYSICAL;
+  }
+
+  const areaProps = new gpropsCtor();
+  const volumeProps = new gpropsCtor();
+
+  try {
+    const hasArea = tryComputeSurfaceProperties(oc, shape, areaProps);
+    const hasVolume = tryComputeVolumeProperties(oc, shape, volumeProps);
+    const scale = Number.isFinite(scaleToMeters) && scaleToMeters > 0
+      ? scaleToMeters
+      : 1;
+    const areaFactor = scale * scale;
+    const volumeFactor = areaFactor * scale;
+
+    const surfaceAreaRaw = hasArea ? safeFinite(areaProps.Mass()) : null;
+    const surfaceArea =
+      surfaceAreaRaw == null ? null : surfaceAreaRaw * areaFactor;
+    const volumeRaw = hasVolume ? safeFinite(volumeProps.Mass()) : null;
+    const volume =
+      volumeRaw == null ? null : Math.abs(volumeRaw) * volumeFactor;
+
+    return { surfaceArea, volume };
+  } catch {
+    return NULL_PHYSICAL;
+  } finally {
+    safeDelete(areaProps);
+    safeDelete(volumeProps);
+  }
+}
+
+function tryGetShape(oc: OpenCascadeInstance, label: any) {
+  const getShape = oc?.XCAFDoc_ShapeTool?.GetShape_2;
+  if (typeof getShape !== 'function') {
+    return null;
+  }
+  try {
+    return getShape(label);
+  } catch {
+    return null;
+  }
+}
+
+function tryComputeSurfaceProperties(
+  oc: OpenCascadeInstance,
+  shape: any,
+  props: any
+) {
+  const gprop = oc?.BRepGProp;
+  if (!gprop) {
+    return false;
+  }
+  return callWithOverloads(gprop, [
+    ['SurfaceProperties_1', shape, props, false, false],
+    ['SurfaceProperties', shape, props, false, false],
+    ['SurfaceProperties_2', shape, props, 1e-6, false],
+  ]);
+}
+
+function tryComputeVolumeProperties(
+  oc: OpenCascadeInstance,
+  shape: any,
+  props: any
+) {
+  const gprop = oc?.BRepGProp;
+  if (!gprop) {
+    return false;
+  }
+  return callWithOverloads(gprop, [
+    ['VolumeProperties_1', shape, props, true, false, false],
+    ['VolumeProperties', shape, props, true, false, false],
+    ['VolumeProperties_2', shape, props, 1e-6, true, false],
+  ]);
+}
+
+function callWithOverloads(target: any, calls: Array<[string, ...any[]]>) {
+  for (const [name, ...args] of calls) {
+    const fn = target?.[name];
+    if (typeof fn !== 'function') {
+      continue;
+    }
+    try {
+      fn.call(target, ...args);
+      return true;
+    } catch {
+      // try next overload
+    }
+  }
+  return false;
+}
+
+function safeFinite(value: unknown) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function safeDelete(value: any) {
+  if (value && typeof value.delete === 'function') {
+    try {
+      value.delete();
+    } catch {
+      // ignore
+    }
+  }
 }

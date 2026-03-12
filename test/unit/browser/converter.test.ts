@@ -88,6 +88,31 @@ describe('OpenCascadeConverter', () => {
     expect(bom.roots).toEqual(['a']);
   });
 
+  it('forwards unitScaleToMeters to node map and bom builders when provided', async () => {
+    const { OpenCascadeConverter } = await import('../../../src/browser/converter');
+    const oc = { token: 'oc' };
+    const converter = new OpenCascadeConverter(oc as any);
+
+    buildNodeMapMock.mockReturnValue({ roots: ['a'], nodes: {} } as any);
+    buildBomMock.mockReturnValue({ roots: ['a'], items: [] } as any);
+
+    converter.createNodeMap({ handle: true } as any, { unitScaleToMeters: 0.001 });
+    converter.createBom({ handle: true } as any, { unitScaleToMeters: 0.001 });
+
+    expect(buildNodeMapMock).toHaveBeenCalledWith(
+      oc,
+      { handle: true },
+      undefined,
+      { scaleToMeters: 0.001 }
+    );
+    expect(buildBomMock).toHaveBeenCalledWith(
+      oc,
+      { handle: true },
+      undefined,
+      { scaleToMeters: 0.001 }
+    );
+  });
+
   it('creates metadata from glb output and overrides', async () => {
     const { OpenCascadeConverter } = await import('../../../src/browser/converter');
     const oc = { token: 'oc' };

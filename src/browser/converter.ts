@@ -57,7 +57,15 @@ export class OpenCascadeConverter {
    * Builds a stable node map for the document.
    * @param docHandle XCAF document handle.
    */
-  createNodeMap(docHandle: OcctDocumentHandle) {
+  createNodeMap(
+    docHandle: OcctDocumentHandle,
+    options?: { unitScaleToMeters?: number }
+  ) {
+    if (Number.isFinite(options?.unitScaleToMeters)) {
+      return buildNodeMap(this.oc, docHandle, undefined, {
+        scaleToMeters: options?.unitScaleToMeters,
+      });
+    }
     return buildNodeMap(this.oc, docHandle);
   }
 
@@ -65,7 +73,15 @@ export class OpenCascadeConverter {
    * Builds a BOM summary for the document.
    * @param docHandle XCAF document handle.
    */
-  createBom(docHandle: OcctDocumentHandle) {
+  createBom(
+    docHandle: OcctDocumentHandle,
+    options?: { unitScaleToMeters?: number }
+  ) {
+    if (Number.isFinite(options?.unitScaleToMeters)) {
+      return buildBom(this.oc, docHandle, undefined, {
+        scaleToMeters: options?.unitScaleToMeters,
+      });
+    }
     return buildBom(this.oc, docHandle);
   }
 

@@ -134,7 +134,11 @@ Example `nodeMap`:
       "productName": "Gear Box",
       "parentId": null,
       "children": ["0:1/0:1:2"],
-      "path": ["0:1"]
+      "path": ["0:1"],
+      "physical": {
+        "surfaceArea": null,
+        "volume": null
+      }
     }
   }
 }
@@ -151,6 +155,10 @@ Example `bom`:
       "productName": "Flat Washer",
       "kind": "part",
       "quantity": 4,
+      "physical": {
+        "surfaceArea": 0.0125,
+        "volume": 0.000001
+      },
       "instances": [
         {
           "nodeId": "0:1/0:1:2:1",
@@ -177,7 +185,11 @@ Example `mappedNodeMap` (from `metadata.nodeMap`):
       "parentId": null,
       "childrenIds": ["0:1/0:1:2"],
       "gltfNodeIndex": 0,
-      "gltfMeshIndex": 0
+      "gltfMeshIndex": 0,
+      "physical": {
+        "surfaceArea": null,
+        "volume": null
+      }
     }
   }
 }
@@ -191,7 +203,11 @@ Example `bomSummary` (from `metadata.bom`):
     "name": "Flat Washer",
     "quantity": 4,
     "productId": "0:1:2",
-    "kind": "part"
+    "kind": "part",
+    "physical": {
+      "surfaceArea": 0.0125,
+      "volume": 0.000001
+    }
   }
 ]
 ```
@@ -227,7 +243,11 @@ Example `metadata` (from `convertCadBufferToGlbWithMetadata`):
         "parentId": null,
         "childrenIds": [],
         "gltfNodeIndex": 0,
-        "gltfMeshIndex": 0
+        "gltfMeshIndex": 0,
+        "physical": {
+          "surfaceArea": null,
+          "volume": null
+        }
       }
     }
   },
@@ -236,7 +256,11 @@ Example `metadata` (from `convertCadBufferToGlbWithMetadata`):
       "name": "Gear Box",
       "quantity": 1,
       "productId": "0:1",
-      "kind": "assembly"
+      "kind": "assembly",
+      "physical": {
+        "surfaceArea": null,
+        "volume": null
+      }
     }
   ],
   "units": {

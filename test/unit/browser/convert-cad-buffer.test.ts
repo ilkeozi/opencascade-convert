@@ -79,6 +79,10 @@ describe('convertCadBufferToGlbWithMetadata', () => {
             parentId: null,
             children: [],
             path: ['0:1'],
+            physical: {
+              surfaceArea: 1,
+              volume: 2,
+            },
           },
         },
       })),
@@ -91,6 +95,10 @@ describe('convertCadBufferToGlbWithMetadata', () => {
             kind: 'part',
             quantity: 1,
             instances: [],
+            physical: {
+              surfaceArea: 1,
+              volume: 2,
+            },
           },
         ],
       })),
@@ -114,7 +122,15 @@ describe('convertCadBufferToGlbWithMetadata', () => {
     expect(result.metadata.schemaVersion).toBe('test-schema');
     expect(result.metadata.units.scaleToMeters).toBe(0.001);
     expect(result.metadata.nodeMap.roots).toEqual(['0:1']);
+    expect(result.metadata.nodeMap.nodes['0:1']?.physical).toEqual({
+      surfaceArea: 1,
+      volume: 2,
+    });
     expect(result.metadata.bom[0]?.name).toBe('Part');
+    expect(result.metadata.bom[0]?.physical).toEqual({
+      surfaceArea: 1,
+      volume: 2,
+    });
     expect(result.conversionWarnings[0]?.code).toBe('mesh/relative-forced-false');
     expect(result.patchedGlb).toBeInstanceOf(Uint8Array);
   });
@@ -123,6 +139,25 @@ describe('convertCadBufferToGlbWithMetadata', () => {
     const converter = {
       readBuffer: vi.fn(() => ({ get: () => ({}) })),
       createNodeMap: vi.fn(() => ({ roots: [], nodes: {} })),
+    };
+
+    try {
+      convertCadBufferToGlbWithMetadata(converter as any, new Uint8Array([1]), {
+        inputFormat: 'step',
+        validateNodeMap: true,
+        unitScaleToMeters: 1,
+      });
+      throw new Error('Expected validateNodeMap error');
+    } catch (error: any) {
+      expect(error?.__code).toBe('UNSUPPORTED_STEP_CONTENT');
+      expect(error?.detail).toEqual({ rootCount: 0, nodeCount: 0 });
+    }
+  });
+
+  it('throws when validateNodeMap fails and node map keys are missing', () => {
+    const converter = {
+      readBuffer: vi.fn(() => ({ get: () => ({}) })),
+      createNodeMap: vi.fn(() => ({})),
     };
 
     try {
@@ -344,8 +379,116 @@ describe('convertCadBufferToGlbWithMetadata', () => {
       quantity: 0,
       productId: '0:1',
       kind: undefined,
+      physical: {
+        surfaceArea: null,
+        volume: null,
+      },
     });
     expect(result.metadata.bom[1]?.name).toBe('NameOnly');
     expect(result.metadata.bom[2]?.name).toBe('Unknown');
+  });
+
+  it('handles non-array bom items without physical warning', () => {
+    const glb = buildMinimalGlb();
+    const converter = {
+      readBuffer: vi.fn(() => ({ get: () => ({}) })),
+      triangulate: vi.fn(),
+      writeBuffer: vi.fn(() => ({ outputFormat: 'glb', glb })),
+      createNodeMap: vi.fn(() => ({
+        roots: ['0:1'],
+        nodes: {
+          '0:1': {
+            id: '0:1',
+            labelEntry: '0:1',
+            name: 'Part',
+            kind: 'part',
+            productId: '0:1',
+            productName: 'Part',
+            parentId: null,
+            children: [],
+            path: ['0:1'],
+            physical: { surfaceArea: 1, volume: 1 },
+          },
+        },
+      })),
+      createBom: vi.fn(() => ({
+        roots: ['0:1'],
+      })),
+    };
+
+    const result = convertCadBufferToGlbWithMetadata(
+      converter as any,
+      new Uint8Array([1]),
+      {
+        inputFormat: 'step',
+        unitScaleToMeters: 1,
+      }
+    ) as ConvertCadBufferResult;
+
+    expect(result.metadata.bom).toEqual([]);
+    expect(
+      result.conversionWarnings.some((warning) => warning.code === 'physical/unavailable')
+    ).toBe(false);
+  });
+
+  it('adds physical/unavailable warning when part physical values are null', () => {
+    const glb = buildMinimalGlb();
+    const converter = {
+      readBuffer: vi.fn(() => ({ get: () => ({}) })),
+      triangulate: vi.fn(),
+      writeBuffer: vi.fn(() => ({ outputFormat: 'glb', glb })),
+      createNodeMap: vi.fn(() => ({
+        roots: ['0:1'],
+        nodes: {
+          '0:1': {
+            id: '0:1',
+            labelEntry: '0:1',
+            name: 'Part',
+            kind: 'part',
+            productId: '0:1',
+            productName: 'Part',
+            parentId: null,
+            children: [],
+            path: ['0:1'],
+          },
+        },
+      })),
+      createBom: vi.fn(() => ({
+        roots: ['0:1'],
+        items: [
+          {
+            productId: '0:1',
+            productName: 'Part',
+            kind: 'part',
+            quantity: 1,
+            instances: [],
+            physical: {
+              surfaceArea: null,
+              volume: null,
+            },
+          },
+        ],
+      })),
+    };
+
+    const result = convertCadBufferToGlbWithMetadata(
+      converter as any,
+      new Uint8Array([1]),
+      {
+        inputFormat: 'step',
+        unitScaleToMeters: 1,
+      }
+    ) as ConvertCadBufferResult;
+
+    expect(result.metadata.bom[0]?.physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
+    expect(result.conversionWarnings.at(-1)).toEqual({
+      code: 'physical/unavailable',
+      message:
+        'Physical properties could not be computed for one or more part products.',
+      detail: { productIds: ['0:1'] },
+    });
   });
 });
