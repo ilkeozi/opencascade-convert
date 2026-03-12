@@ -3,6 +3,7 @@ import type {
   InputFormat,
   NameFormat,
   NodeMap,
+  PhysicalProps,
   ReadOptions,
   TriangulateOptions,
 } from '../core/types';
@@ -120,6 +121,10 @@ export type ConvertedNode = {
    * Index of the mapped glTF mesh, if any.
    */
   gltfMeshIndex?: number;
+  /**
+   * Physical properties for this product.
+   */
+  physical: PhysicalProps;
 };
 
 /**
@@ -156,6 +161,10 @@ export type BomSummaryItem = {
    * Product kind (e.g. part or assembly) when available.
    */
   kind?: string;
+  /**
+   * Physical properties for this product.
+   */
+  physical: PhysicalProps;
 };
 
 /**
@@ -424,6 +433,7 @@ function buildMappedNodeMap(
       childrenIds: Array.isArray(node.children) ? node.children : [],
       gltfNodeIndex: mapping.gltfNodeIndex,
       gltfMeshIndex: mapping.gltfMeshIndex,
+      physical: coercePhysicalProps(node.physical),
     };
   }
 
@@ -463,6 +473,7 @@ function buildBomSummary(
     quantity: item.quantity ?? 0,
     productId: item.productId,
     kind: item.kind,
+    physical: coercePhysicalProps(item.physical),
   }));
 }
 
@@ -490,7 +501,14 @@ export function convertCadBufferToGlbWithMetadata(
     }
   );
 
-  const nodeMapRaw = converter.createNodeMap(docHandle) as NodeMap;
+  const oc = (converter as any).oc;
+  const unitInfo = Number.isFinite(options.unitScaleToMeters)
+    ? { scaleToMeters: options.unitScaleToMeters as number, source: 'override' }
+    : readInputUnitScaleToMeters(oc, docHandle);
+
+  const nodeMapRaw = converter.createNodeMap(docHandle, {
+    unitScaleToMeters: unitInfo.scaleToMeters,
+  }) as NodeMap;
   if (options.validateNodeMap) {
     const rootCount = Array.isArray(nodeMapRaw?.roots)
       ? nodeMapRaw.roots.length
@@ -508,11 +526,6 @@ export function convertCadBufferToGlbWithMetadata(
       );
     }
   }
-
-  const oc = (converter as any).oc;
-  const unitInfo = Number.isFinite(options.unitScaleToMeters)
-    ? { scaleToMeters: options.unitScaleToMeters as number, source: 'override' }
-    : readInputUnitScaleToMeters(oc, docHandle);
 
   const { glb, meshStats, conversionWarnings } =
     convertDocumentToGlbWithRetries(converter, docHandle, {
@@ -535,7 +548,23 @@ export function convertCadBufferToGlbWithMetadata(
   }
 
   const mappedNodeMap = buildMappedNodeMap(nodeMapRaw, glb);
-  const bomRaw = converter.createBom(docHandle) as BomExport;
+  const bomRaw = converter.createBom(docHandle, {
+    unitScaleToMeters: unitInfo.scaleToMeters,
+  }) as BomExport;
+  const bom = buildBomSummary(bomRaw, mappedNodeMap);
+  const physicalUnavailableProductIds = collectUnavailablePhysicalProductIds(
+    bomRaw
+  );
+  if (physicalUnavailableProductIds.length > 0) {
+    conversionWarnings.push({
+      code: 'physical/unavailable',
+      message:
+        'Physical properties could not be computed for one or more part products.',
+      detail: {
+        productIds: physicalUnavailableProductIds,
+      },
+    });
+  }
   const boundsMeters = computeBoundsMeters(glb);
 
   const metadata: ConversionMetadata = {
@@ -544,7 +573,7 @@ export function convertCadBufferToGlbWithMetadata(
     conversionWarnings,
     assemblyTree: buildAssemblyTree(mappedNodeMap),
     nodeMap: mappedNodeMap,
-    bom: buildBomSummary(bomRaw, mappedNodeMap),
+    bom,
     units: {
       inputLengthUnit: unitNameFromScale(unitInfo.scaleToMeters),
       inputUnitSource: unitInfo.source,
@@ -562,4 +591,41 @@ export function convertCadBufferToGlbWithMetadata(
   }
 
   return { glb, patchedGlb, meshStats, conversionWarnings, metadata };
+}
+
+function coercePhysicalProps(value: any): PhysicalProps {
+  const areaRaw = value?.surfaceArea;
+  const volumeRaw = value?.volume;
+  const area = areaRaw == null ? null : Number(areaRaw);
+  const volume = volumeRaw == null ? null : Number(volumeRaw);
+  return {
+    surfaceArea:
+      area != null && Number.isFinite(area as number) ? (area as number) : null,
+    volume:
+      volume != null && Number.isFinite(volume as number)
+        ? (volume as number)
+        : null,
+  };
+}
+
+function collectUnavailablePhysicalProductIds(bomRaw: BomExport) {
+  const ids = new Set<string>();
+  if (!Array.isArray((bomRaw as any)?.items)) {
+    return [];
+  }
+
+  (bomRaw as any).items.forEach((item: any) => {
+    if (item?.kind !== 'part') {
+      return;
+    }
+    const physical = coercePhysicalProps(item?.physical);
+    if (physical.surfaceArea != null && physical.volume != null) {
+      return;
+    }
+    if (typeof item?.productId === 'string' && item.productId.length > 0) {
+      ids.add(item.productId);
+    }
+  });
+
+  return Array.from(ids);
 }

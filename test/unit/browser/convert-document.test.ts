@@ -150,4 +150,20 @@ describe('convertDocumentToGlbWithRetries', () => {
 
     expect(result.conversionWarnings).toHaveLength(0);
   });
+
+  it('throws when attempts is NaN and no conversion attempt runs', () => {
+    const glb = buildGlbWithTriangleCount(1);
+    const converter = {
+      triangulate: vi.fn(),
+      writeBuffer: vi.fn().mockReturnValue({ outputFormat: 'glb', glb }),
+    };
+    const docHandle = { get: () => ({}) };
+
+    expect(() =>
+      convertDocumentToGlbWithRetries(converter as any, docHandle as any, {
+        attempts: Number.NaN as any,
+      })
+    ).toThrow('Failed to generate GLB output.');
+    expect(converter.writeBuffer).not.toHaveBeenCalled();
+  });
 });

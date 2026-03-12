@@ -76,4 +76,5 @@ export type {
   InputFormat,
   NodeMap,
   OutputFormat,
+  PhysicalProps,
 } from '../core/types';

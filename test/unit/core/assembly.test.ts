@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { buildAssemblyTree, buildBom, buildNodeMap } from '../../../src/core/assembly';
 
@@ -6,6 +6,7 @@ type Label = {
   entry: string;
   name?: string;
   kind?: 'assembly' | 'part';
+  shape?: { surfaceArea?: number; volume?: number };
   components?: Label[];
   GetLabelName?: () => string;
   GetLabelName_1?: () => unknown;
@@ -88,6 +89,7 @@ const createOcStub = (
       GetComponents: (label: Label, sequence: LabelSequence) => {
         sequence.set(label.components ?? []);
       },
+      GetShape_2: (label: Label) => label.shape ?? null,
     },
     TDF_Tool: {
       Entry: (label: Label, entry: TCollection_AsciiString_1) => {
@@ -243,6 +245,343 @@ describe('assembly', () => {
 
     expect(shared?.quantity).toBe(2);
     expect(shared?.instances).toHaveLength(2);
+    expect(shared?.physical).toEqual({ surfaceArea: null, volume: null });
+  });
+
+  it('sets assembly physical values to null and computes part physicals', () => {
+    const part: Label = {
+      entry: '8:1',
+      name: 'Part',
+      kind: 'part',
+      shape: { surfaceArea: 50, volume: -5 },
+    };
+    part.GetLabelName = () => part.name ?? '';
+
+    const root: Label = {
+      entry: '8:0',
+      name: 'Root',
+      kind: 'assembly',
+      components: [part],
+    };
+    root.GetLabelName = () => root.name ?? '';
+
+    const oc = createOcStub([root]) as any;
+    class GProps {
+      mass = 0;
+      Mass() {
+        return this.mass;
+      }
+      delete() {}
+    }
+    oc.GProp_GProps_1 = GProps;
+    oc.BRepGProp = {
+      SurfaceProperties_1: (shape: any, props: any) => {
+        props.mass = shape.surfaceArea ?? 0;
+      },
+      VolumeProperties_1: (shape: any, props: any) => {
+        props.mass = shape.volume ?? 0;
+      },
+    };
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+
+    expect(nodeMap.nodes['8:0'].physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
+    expect(nodeMap.nodes['8:0/8:1'].physical).toEqual({
+      surfaceArea: 50,
+      volume: 5,
+    });
+  });
+
+  it('applies unit conversion and computes once per repeated product', () => {
+    const product: Label = {
+      entry: '9:1',
+      name: 'Shared',
+      kind: 'part',
+      shape: { surfaceArea: 2000, volume: 1000 },
+    };
+    product.GetLabelName = () => product.name ?? '';
+
+    const instanceA: Label = {
+      entry: '9:1:1',
+      kind: 'part',
+      isComponent: true,
+      referred: product,
+    };
+    const instanceB: Label = {
+      entry: '9:1:2',
+      kind: 'part',
+      isComponent: true,
+      referred: product,
+    };
+
+    const root: Label = {
+      entry: '9:0',
+      kind: 'assembly',
+      components: [instanceA, instanceB],
+    };
+
+    const oc = createOcStub([root]) as any;
+    const calls = { surface: 0, volume: 0 };
+    class GProps {
+      mass = 0;
+      Mass() {
+        return this.mass;
+      }
+      delete() {}
+    }
+    oc.GProp_GProps_1 = GProps;
+    oc.BRepGProp = {
+      SurfaceProperties_1: (shape: any, props: any) => {
+        calls.surface += 1;
+        props.mass = shape.surfaceArea ?? 0;
+      },
+      VolumeProperties_1: (shape: any, props: any) => {
+        calls.volume += 1;
+        props.mass = shape.volume ?? 0;
+      },
+    };
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const bom = buildBom(oc, docHandle as any, undefined, {
+      scaleToMeters: 0.001,
+    });
+    const shared = bom.items.find((item) => item.productId === '9:1');
+
+    expect(calls.surface).toBe(1);
+    expect(calls.volume).toBe(1);
+    expect(shared?.quantity).toBe(2);
+    expect(shared?.physical.surfaceArea).toBeCloseTo(0.002);
+    expect(shared?.physical.volume).toBeCloseTo(0.000001);
+  });
+
+  it('returns null physical values when OCCT property calls fail', () => {
+    const root: Label = {
+      entry: '10:0',
+      kind: 'part',
+      shape: { surfaceArea: 12, volume: 5 },
+    };
+
+    const oc = createOcStub([root]) as any;
+    class GProps {
+      Mass() {
+        return 0;
+      }
+      delete() {}
+    }
+    oc.GProp_GProps_1 = GProps;
+    oc.BRepGProp = {
+      SurfaceProperties_1: () => {
+        throw new Error('surface fail');
+      },
+      VolumeProperties_1: () => {
+        throw new Error('volume fail');
+      },
+    };
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+    expect(nodeMap.nodes['10:0'].physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
+  });
+
+  it('uses Handle_TDF_Attribute_1 when Handle_TDataStd_Name_1 is unavailable', () => {
+    const root: Label = { entry: '11:0', kind: 'part' };
+    root.FindAttribute_1 = (_guid, handle) => {
+      handle.value = { Get: () => 'AttrName' };
+      return true;
+    };
+
+    const oc = createOcStub([root], { withNameHandle: false });
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+
+    expect(nodeMap.nodes['11:0'].name).toBe('AttrName');
+  });
+
+  it('returns null physical values when gprops constructor is missing', () => {
+    const root: Label = {
+      entry: '12:0',
+      kind: 'part',
+      shape: { surfaceArea: 1, volume: 1 },
+    };
+    const oc = createOcStub([root]) as any;
+    delete oc.GProp_GProps_1;
+    delete oc.GProp_GProps;
+    oc.BRepGProp = {
+      SurfaceProperties_1: vi.fn(),
+      VolumeProperties_1: vi.fn(),
+    };
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+
+    expect(nodeMap.nodes['12:0'].physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
+  });
+
+  it('returns null physical values when BRepGProp is unavailable', () => {
+    const root: Label = {
+      entry: '13:0',
+      kind: 'part',
+      shape: { surfaceArea: 1, volume: 1 },
+    };
+    const oc = createOcStub([root]) as any;
+    class GProps {
+      Mass() {
+        return 0;
+      }
+      delete() {}
+    }
+    oc.GProp_GProps_1 = GProps;
+    delete oc.BRepGProp;
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+
+    expect(nodeMap.nodes['13:0'].physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
+  });
+
+  it('returns null physical values when GetShape_2 is unavailable or throws', () => {
+    const rootA: Label = {
+      entry: '14:0',
+      kind: 'part',
+      shape: { surfaceArea: 1, volume: 1 },
+    };
+    const ocA = createOcStub([rootA]) as any;
+    delete ocA.XCAFDoc_ShapeTool.GetShape_2;
+    class GPropsA {
+      Mass() {
+        return 0;
+      }
+      delete() {}
+    }
+    ocA.GProp_GProps_1 = GPropsA;
+    ocA.BRepGProp = {
+      SurfaceProperties_1: vi.fn(),
+      VolumeProperties_1: vi.fn(),
+    };
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMapA = buildNodeMap(ocA as any, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+    expect(nodeMapA.nodes['14:0'].physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
+
+    const rootB: Label = {
+      entry: '14:1',
+      kind: 'part',
+      shape: { surfaceArea: 1, volume: 1 },
+    };
+    const ocB = createOcStub([rootB]) as any;
+    ocB.XCAFDoc_ShapeTool.GetShape_2 = () => {
+      throw new Error('shape fail');
+    };
+    class GPropsB {
+      Mass() {
+        return 0;
+      }
+      delete() {}
+    }
+    ocB.GProp_GProps_1 = GPropsB;
+    ocB.BRepGProp = {
+      SurfaceProperties_1: vi.fn(),
+      VolumeProperties_1: vi.fn(),
+    };
+    const nodeMapB = buildNodeMap(ocB as any, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+    expect(nodeMapB.nodes['14:1'].physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
+  });
+
+  it('falls back to non-suffixed BRepGProp overloads', () => {
+    const root: Label = {
+      entry: '15:0',
+      kind: 'part',
+      shape: { surfaceArea: 10, volume: 20 },
+    };
+    const oc = createOcStub([root]) as any;
+    class GProps {
+      mass = 0;
+      Mass() {
+        return this.mass;
+      }
+      delete() {}
+    }
+    oc.GProp_GProps_1 = GProps;
+    oc.BRepGProp = {
+      SurfaceProperties: (shape: any, props: any) => {
+        props.mass = shape.surfaceArea;
+      },
+      VolumeProperties: (shape: any, props: any) => {
+        props.mass = shape.volume;
+      },
+    };
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+
+    expect(nodeMap.nodes['15:0'].physical).toEqual({
+      surfaceArea: 10,
+      volume: 20,
+    });
+  });
+
+  it('returns null physical values when mass calculation throws and delete throws', () => {
+    const root: Label = {
+      entry: '16:0',
+      kind: 'part',
+      shape: { surfaceArea: 10, volume: 20 },
+    };
+    const oc = createOcStub([root]) as any;
+    class GProps {
+      Mass() {
+        throw new Error('mass fail');
+      }
+      delete() {
+        throw new Error('delete fail');
+      }
+    }
+    oc.GProp_GProps_1 = GProps;
+    oc.BRepGProp = {
+      SurfaceProperties_1: vi.fn(),
+      VolumeProperties_1: vi.fn(),
+    };
+
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any, undefined, {
+      scaleToMeters: 1,
+    });
+    expect(nodeMap.nodes['16:0'].physical).toEqual({
+      surfaceArea: null,
+      volume: null,
+    });
   });
 
   it('resolves label names from attributes and label getters', () => {
@@ -390,5 +729,61 @@ describe('assembly', () => {
     expect(nodeMap.nodes['7:0'].name).toBe('123');
     expect(nodeMap.nodes['7:0/7:0:1'].name).toBe('456');
     expect(nodeMap.nodes['7:0/7:0:2'].name).toBe('7:0:2');
+  });
+
+  it('handles fallback conversion failures and returns entry names', () => {
+    const root: Label = { entry: '17:0', kind: 'part' };
+    root.GetLabelName = () =>
+      ({
+        ToCString: () => {
+          throw new Error('cstr fail');
+        },
+        ToString: () => {
+          throw new Error('str fail');
+        },
+        toString: () => '[object Object]',
+      }) as any;
+
+    const child: Label = { entry: '17:1', kind: 'part' };
+    child.GetLabelName = () => ({}) as any;
+
+    const assembly: Label = {
+      entry: '17:a',
+      kind: 'assembly',
+      components: [root, child],
+    };
+
+    const oc = createOcStub([assembly]);
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+
+    expect(nodeMap.nodes['17:a/17:0'].name).toBe('17:0');
+    expect(nodeMap.nodes['17:a/17:1'].name).toBe('17:1');
+  });
+
+  it('handles ToString fallback throwing', () => {
+    const root: Label = { entry: '18:0', kind: 'part' };
+    root.GetLabelName = () =>
+      ({
+        ToString: () => {
+          throw new Error('toString fail');
+        },
+        toString: () => '[object Object]',
+      }) as any;
+
+    const oc = createOcStub([root]);
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.nodes['18:0'].name).toBe('18:0');
+  });
+
+  it('returns empty fallback when value has no string conversion methods', () => {
+    const root: Label = { entry: '19:0', kind: 'part' };
+    root.GetLabelName = () => Object.create(null) as any;
+
+    const oc = createOcStub([root]);
+    const docHandle = { get: () => ({ Main: () => ({}) }) };
+    const nodeMap = buildNodeMap(oc as any, docHandle as any);
+    expect(nodeMap.nodes['19:0'].name).toBe('19:0');
   });
 });
