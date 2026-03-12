@@ -287,6 +287,7 @@ Example `metadata` (from `convertCadBufferToGlbWithMetadata`):
 Hosted API docs:
 
 - https://ilkeozi.github.io/opencascade-convert/
+- [CHANGELOG.md](./CHANGELOG.md)
 
 Generate locally:
 
